@@ -6,7 +6,7 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 app.config["DEBUG"] = True
 
-API_TOKEN = "sk_live_1234567890abcdef"
+API_TOKEN = os.environ.get("API_TOKEN")
 
 
 @app.route("/")
