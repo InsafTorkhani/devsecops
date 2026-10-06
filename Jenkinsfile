@@ -34,6 +34,15 @@ pipeline {
       }
     }
 
+    stage('SAST (Bandit)') {
+      steps {
+        sh '''
+          docker run --rm vulnerable-app:${BUILD_NUMBER} sh -c "pip install -q bandit >/dev/null 2>&1 && bandit -r /app/app.py -f json" > bandit-report.json || true
+          docker run --rm vulnerable-app:${BUILD_NUMBER} sh -c "pip install -q bandit >/dev/null 2>&1 && bandit -r /app/app.py -lll"
+        '''
+      }
+    }
+
     stage('Docker image scan (Trivy)') {
       steps {
         sh '''
@@ -45,7 +54,7 @@ pipeline {
 
   post {
     always {
-      archiveArtifacts artifacts: 'gitleaks-report.json', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'gitleaks-report.json, bandit-report.json', allowEmptyArchive: true
     }
   }
 }
