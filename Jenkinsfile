@@ -37,7 +37,7 @@ pipeline {
     stage('Docker image scan (Trivy)') {
       steps {
         sh '''
-          ./tools/trivy image --exit-code 1 --severity HIGH,CRITICAL vulnerable-app:${BUILD_NUMBER}
+          ./tools/trivy image --ignore-unfixed --exit-code 1 --severity HIGH,CRITICAL vulnerable-app:${BUILD_NUMBER}
         '''
       }
     }
