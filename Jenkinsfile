@@ -1,0 +1,37 @@
+pipeline {
+  agent any
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'ls -la'
+      }
+    }
+
+    stage('Secret scan (Gitleaks)') {
+      steps {
+        sh '''
+          mkdir -p tools
+          curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar -xz -C tools gitleaks
+          ./tools/gitleaks detect --source . --no-git --exit-code 0 --report-path gitleaks-report.json
+        '''
+      }
+    }
+
+    stage('Dependency and config scan (Trivy)') {
+      steps {
+        sh '''
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./tools
+          ./tools/trivy fs --exit-code 0 --severity HIGH,CRITICAL .
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'gitleaks-report.json', allowEmptyArchive: true
+    }
+  }
+}
