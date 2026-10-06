@@ -1,0 +1,8 @@
+tools/
+.git/
+gitleaks-report.json
+.trivyignore
+.gitlab-ci.yml
+.pre-commit-config.yaml
+tests/
+docs/
