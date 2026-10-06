@@ -1,2 +1,8 @@
 # Temporary Trivy ignore entries
 # Use with documented justification and expiry date
+
+# bundled inside pip, not used by the app at runtime; review 2026-11-06
+GHSA-6v7p-g79w-8964
+CVE-2025-47273
+CVE-2026-97687
+CVE-2026-97689
