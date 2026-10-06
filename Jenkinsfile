@@ -14,7 +14,7 @@ pipeline {
         sh '''
           mkdir -p tools
           curl -sL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz | tar -xz -C tools gitleaks
-          ./tools/gitleaks detect --source . --no-git --exit-code 0 --report-path gitleaks-report.json
+          ./tools/gitleaks detect --source . --no-git --exit-code 1 --report-path gitleaks-report.json
         '''
       }
     }
@@ -23,7 +23,21 @@ pipeline {
       steps {
         sh '''
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b ./tools
-          ./tools/trivy fs --exit-code 0 --severity HIGH,CRITICAL .
+          ./tools/trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+        '''
+      }
+    }
+
+    stage('Build Docker image') {
+      steps {
+        sh 'docker build -t vulnerable-app:${BUILD_NUMBER} .'
+      }
+    }
+
+    stage('Docker image scan (Trivy)') {
+      steps {
+        sh '''
+          ./tools/trivy image --exit-code 1 --severity HIGH,CRITICAL vulnerable-app:${BUILD_NUMBER}
         '''
       }
     }
