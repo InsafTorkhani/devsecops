@@ -50,11 +50,29 @@ pipeline {
         '''
       }
     }
+
+    stage('DAST (OWASP ZAP baseline)') {
+      steps {
+        sh '''
+          docker network create dast-net-${BUILD_NUMBER}
+          docker run -d --name dast-app-${BUILD_NUMBER} --network dast-net-${BUILD_NUMBER} --network-alias target vulnerable-app:${BUILD_NUMBER}
+          sleep 8
+          docker run --name zap-${BUILD_NUMBER} --network dast-net-${BUILD_NUMBER} --user root zaproxy/zap-stable sh -c "mkdir -p /zap/wrk && zap-baseline.py -t http://target:5000 -r zap-report.html -I" || true
+          docker cp zap-${BUILD_NUMBER}:/zap/wrk/zap-report.html zap-report.html
+          test -f zap-report.html
+        '''
+      }
+      post {
+        always {
+          sh 'docker rm -f dast-app-${BUILD_NUMBER} zap-${BUILD_NUMBER} || true; docker network rm dast-net-${BUILD_NUMBER} || true'
+        }
+      }
+    }
   }
 
   post {
     always {
-      archiveArtifacts artifacts: 'gitleaks-report.json, bandit-report.json', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'gitleaks-report.json, bandit-report.json, zap-report.html', allowEmptyArchive: true
     }
   }
 }
