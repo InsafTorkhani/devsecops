@@ -1,4 +1,3 @@
-```groovy
 // =============================================================================
 // DevSecOps pipeline (Jenkins, declarative)
 // Order: cheap and fast checks first, expensive ones last (fail early).
@@ -206,4 +205,3 @@ pipeline {
     }
   }
 }
-```
