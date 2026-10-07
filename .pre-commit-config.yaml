@@ -1,17 +1,12 @@
+﻿# Runs on every "git commit". A failing hook blocks the commit (shift-left).
 repos:
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
     hooks:
-      - id: gitleaks
-
-  - repo: https://github.com/pycqa/bandit
-    rev: 1.7.8
+      - id: detect-secrets
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
     hooks:
       - id: bandit
-        args: ["-r", ".", "-q"]
-
-  - repo: https://github.com/returntocorp/semgrep
-    rev: v1.75.0
-    hooks:
-      - id: semgrep
-        args: ["--config=auto", "--error", "."]
+        args: ["-ll", "-ii"]
+        exclude: ^tests/

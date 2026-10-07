@@ -38,4 +38,5 @@ def unsafe_load():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)  # nosec B104 - container must bind all interfaces
+    # Container must bind all interfaces; access is limited by Docker port mapping.
+    app.run(host="0.0.0.0", port=port)  # nosec B104
