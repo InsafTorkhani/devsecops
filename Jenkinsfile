@@ -1,3 +1,4 @@
+```groovy
 // =============================================================================
 // DevSecOps pipeline (Jenkins, declarative)
 // Order: cheap and fast checks first, expensive ones last (fail early).
@@ -12,6 +13,7 @@
 //   9. Deploy       -> staging       (only reached if every gate above passed)
 // Each scan also writes a JSON/HTML report that is archived with the build.
 // =============================================================================
+
 pipeline {
   agent any
 
@@ -23,7 +25,7 @@ pipeline {
 
   stages {
 
-    // Start from a clean workspace so old reports are never scanned or reused.
+    // --- Checkout ------------------------------------------------------------
     stage('Checkout') {
       steps {
         deleteDir()
@@ -32,7 +34,6 @@ pipeline {
     }
 
     // --- 1. Secrets scan -----------------------------------------------------
-    // Gitleaks version is pinned. --exit-code 1 = any leak fails the build.
     stage('Secret scan (Gitleaks)') {
       steps {
         sh '''
@@ -44,7 +45,6 @@ pipeline {
     }
 
     // --- 2. Dependency scan (SCA) --------------------------------------------
-    // First run writes a JSON report (never fails), second run is the gate.
     stage('Dependency and config scan (Trivy)') {
       steps {
         sh '''
@@ -56,7 +56,6 @@ pipeline {
     }
 
     // --- 3. Build ------------------------------------------------------------
-    // The image is tagged with the build number so each build is traceable.
     stage('Build Docker image') {
       steps {
         sh 'docker build -t vulnerable-app:${BUILD_NUMBER} .'
@@ -64,9 +63,7 @@ pipeline {
     }
 
     // --- 4. Unit tests -------------------------------------------------------
-    // Tests run with the same Python environment and dependencies as the app.
-    // The tests stay outside the image because .dockerignore excludes tests/.
-    // The Jenkins workspace is mounted read-only, so no root-owned files are created.
+    // Tests remain outside the Docker image because .dockerignore excludes tests/.
     stage('Unit tests (pytest)') {
       steps {
         sh '''
@@ -82,9 +79,6 @@ pipeline {
     }
 
     // --- 5. SAST (Bandit) ----------------------------------------------------
-    // Pass 1: full JSON report, never blocks (kept as evidence).
-    // Pass 2: the gate. -ll = severity >= medium, -ii = confidence >= medium.
-    // Low-confidence findings are not blocking to avoid false positives.
     stage('SAST (Bandit)') {
       steps {
         sh '''
@@ -95,17 +89,18 @@ pipeline {
     }
 
     // --- 6. SAST (SonarQube) -------------------------------------------------
-    // The scanner runs in a container on the same Docker network as SonarQube.
-    // --volumes-from jenkins gives it access to the workspace (Jenkins itself
-    // runs in a container). The token comes from Jenkins Credentials (secret
-    // text, id "sonar-token"): it is never written in this file.
-    // sonar.qualitygate.wait=true makes the build FAIL if the quality gate fails.
     stage('SAST (SonarQube)') {
       steps {
         withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
           sh '''
-            docker run --rm --user "$(id -u):$(id -g)" --network devsecops-net --volumes-from jenkins -w "$WORKSPACE" \
-              -e SONAR_TOKEN="$SONAR_TOKEN" -e SONAR_USER_HOME=/tmp/.sonar sonarsource/sonar-scanner-cli \
+            docker run --rm \
+              --user "$(id -u):$(id -g)" \
+              --network devsecops-net \
+              --volumes-from jenkins \
+              -w "$WORKSPACE" \
+              -e SONAR_TOKEN="$SONAR_TOKEN" \
+              -e SONAR_USER_HOME=/tmp/.sonar \
+              sonarsource/sonar-scanner-cli \
               -Dsonar.host.url=http://sonarqube:9000 \
               -Dsonar.projectKey=devsecops \
               -Dsonar.projectBaseDir="$WORKSPACE" \
@@ -118,32 +113,61 @@ pipeline {
       }
     }
 
-    // --- 7. Docker image scan ------------------------------------------------
-    // --ignore-unfixed: only block what can actually be fixed.
+    // --- 7. Docker image scan -----------------------------------------------
+    // --ignore-unfixed means only vulnerabilities with an available fix
+    // can block the pipeline.
     stage('Docker image scan (Trivy)') {
       steps {
-        ./tools/trivy image --ignore-unfixed --format json --output trivy-image-report.json --exit-code 0 --severity HIGH,CRITICAL vulnerable-app:${BUILD_NUMBER}
-        ./tools/trivy image --ignore-unfixed --exit-code 1 --severity HIGH,CRITICAL vulnerable-app:${BUILD_NUMBER}
+        sh '''
+          ./tools/trivy image \
+            --ignore-unfixed \
+            --format json \
+            --output trivy-image-report.json \
+            --exit-code 0 \
+            --severity HIGH,CRITICAL \
+            vulnerable-app:${BUILD_NUMBER}
+
+          ./tools/trivy image \
+            --ignore-unfixed \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            vulnerable-app:${BUILD_NUMBER}
+        '''
       }
     }
 
-    // --- 8. DAST (OWASP ZAP baseline) ----------------------------------------
-    // The app runs in an isolated Docker network, ZAP scans it passively.
-    // -I = warnings do not fail the build (report only).
+    // --- 8. DAST (OWASP ZAP baseline) ---------------------------------------
     stage('DAST (OWASP ZAP baseline)') {
       steps {
         sh '''
           docker network create dast-net-${BUILD_NUMBER}
-          docker run -d --name dast-app-${BUILD_NUMBER} --network dast-net-${BUILD_NUMBER} --network-alias target vulnerable-app:${BUILD_NUMBER}
+
+          docker run -d \
+            --name dast-app-${BUILD_NUMBER} \
+            --network dast-net-${BUILD_NUMBER} \
+            --network-alias target \
+            vulnerable-app:${BUILD_NUMBER}
+
           sleep 8
-          docker run --name zap-${BUILD_NUMBER} --network dast-net-${BUILD_NUMBER} --user root zaproxy/zap-stable sh -c "mkdir -p /zap/wrk && zap-baseline.py -t http://target:5000 -r zap-report.html -I" || true
+
+          docker run \
+            --name zap-${BUILD_NUMBER} \
+            --network dast-net-${BUILD_NUMBER} \
+            --user root \
+            zaproxy/zap-stable \
+            sh -c "mkdir -p /zap/wrk && zap-baseline.py -t http://target:5000 -r zap-report.html -I" || true
+
           docker cp zap-${BUILD_NUMBER}:/zap/wrk/zap-report.html zap-report.html
           test -f zap-report.html
         '''
       }
+
       post {
         always {
-          sh 'docker rm -f dast-app-${BUILD_NUMBER} zap-${BUILD_NUMBER} || true; docker network rm dast-net-${BUILD_NUMBER} || true'
+          sh '''
+            docker rm -f dast-app-${BUILD_NUMBER} zap-${BUILD_NUMBER} || true
+            docker network rm dast-net-${BUILD_NUMBER} || true
+          '''
         }
       }
     }
@@ -153,21 +177,33 @@ pipeline {
       steps {
         sh '''
           docker rm -f staging-app || true
-          docker run -d --name staging-app -p 5000:5000 vulnerable-app:${BUILD_NUMBER}
+          docker run -d \
+            --name staging-app \
+            -p 5000:5000 \
+            vulnerable-app:${BUILD_NUMBER}
         '''
       }
     }
   }
 
+  // --- Post-build actions ----------------------------------------------------
   post {
+
+    // Archive security reports even if a security gate fails.
     always {
-      archiveArtifacts artifacts: 'gitleaks-report.json, trivy-fs-report.json, bandit-report.json, trivy-image-report.json, zap-report.html', allowEmptyArchive: true
+      archiveArtifacts \
+        artifacts: 'gitleaks-report.json, trivy-fs-report.json, bandit-report.json, trivy-image-report.json, zap-report.html', \
+        allowEmptyArchive: true
     }
+
     failure {
       echo "PIPELINE BLOCKED on build ${env.BUILD_NUMBER}: a security gate failed. See the console of the red stage."
     }
+
     success {
-      echo "All security gates passed on build ${env.BUILD_NUMBER}. SonarQube dashboard: http://localhost:9000/dashboard?id=devsecops"
+      echo "All security gates passed on build ${env.BUILD_NUMBER}."
+      echo "SonarQube dashboard: http://localhost:9000/dashboard?id=devsecops"
     }
   }
 }
+```
