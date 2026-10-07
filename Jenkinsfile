@@ -4,12 +4,12 @@
 //   1. Secrets      -> Gitleaks      (blocks on any leak)
 //   2. Dependencies -> Trivy fs      (blocks on HIGH / CRITICAL)
 //   3. Build        -> Docker image
-//   4. Unit tests   -> pytest        (blocks on a failing test)
-//   5. SAST         -> Bandit        (blocks on medium+ severity AND confidence)
-//   6. SAST         -> SonarQube     (blocks if the quality gate fails)
-//   7. Image scan   -> Trivy image   (blocks on HIGH / CRITICAL that have a fix)
-//   8. DAST         -> OWASP ZAP     (passive baseline, report only)
-//   9. Deploy       -> staging       (only reached if every gate above passed)
+//   4. Unit tests   -> pytest         (blocks on a failing test)
+//   5. SAST         -> Bandit         (blocks on medium+ severity AND confidence)
+//   6. SAST         -> SonarQube      (blocks if the quality gate fails)
+//   7. Image scan   -> Trivy image    (blocks on HIGH / CRITICAL that have a fix)
+//   8. DAST         -> OWASP ZAP      (passive baseline, report only)
+//   9. Deploy       -> staging        (only reached if every gate above passed)
 // Each scan also writes a JSON/HTML report that is archived with the build.
 // =============================================================================
 
@@ -196,13 +196,46 @@ pipeline {
         allowEmptyArchive: true
     }
 
+    // Send an email when the pipeline is blocked.
     failure {
       echo "PIPELINE BLOCKED on build ${env.BUILD_NUMBER}: a security gate failed. See the console of the red stage."
+
+      emailext(
+        to: 'Insaf.Torkhani@Esprit.tn',
+        subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: """The DevSecOps pipeline has FAILED.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+Status: FAILED
+
+A security gate failed. Check Jenkins for the failed stage and console output.
+
+Jenkins: ${env.BUILD_URL}
+"""
+      )
     }
 
+    // Send an email when everything passes.
     success {
       echo "All security gates passed on build ${env.BUILD_NUMBER}."
       echo "SonarQube dashboard: http://localhost:9000/dashboard?id=devsecops"
+
+      emailext(
+        to: 'Insaf.Torkhani@Esprit.tn',
+        subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+        body: """The DevSecOps pipeline completed successfully.
+
+Job: ${env.JOB_NAME}
+Build: #${env.BUILD_NUMBER}
+Status: SUCCESS
+
+All security gates passed.
+
+Jenkins: ${env.BUILD_URL}
+SonarQube: http://localhost:9000/dashboard?id=devsecops
+"""
+      )
     }
   }
 }
