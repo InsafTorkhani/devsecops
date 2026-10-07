@@ -63,13 +63,14 @@ pipeline {
 
     // --- 4. Unit tests -------------------------------------------------------
     // Tests remain outside the Docker image because .dockerignore excludes tests/.
+    // --volumes-from jenkins exposes the Jenkins workspace to the test container.
     stage('Unit tests (pytest)') {
       steps {
         sh '''
           docker run --rm \
             --user "$(id -u):$(id -g)" \
-            -v "$WORKSPACE:/workspace:ro" \
-            -w /workspace \
+            --volumes-from jenkins \
+            -w "$WORKSPACE" \
             -e PYTHONDONTWRITEBYTECODE=1 \
             vulnerable-app:${BUILD_NUMBER} \
             python -m pytest -q -p no:cacheprovider tests
