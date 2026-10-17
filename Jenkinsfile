@@ -16,10 +16,10 @@
 pipeline {
   agent any
 
-  // Automation: Jenkins checks GitHub every ~2 minutes and starts a build
-  // when there is a new commit (no manual click needed).
+  // Automation: GitHub sends a webhook on every push and Jenkins starts
+  // the build immediately (no polling, no manual click).
   triggers {
-    pollSCM('H/2 * * * *')
+    githubPush()
   }
 
   stages {
